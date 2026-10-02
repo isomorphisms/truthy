@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ]; then
+    echo "usage: truthy-fetch RUN_DIR URL" >&2
+    exit 2
+fi
+
+run_dir=$1
+url=$2
+
+[ -f "$run_dir/trace.tsv" ] || {
+    echo "truthy-fetch: not a Truthy run: $run_dir" >&2
+    exit 1
+}
+
+case "$url" in
+    http://*|https://*) ;;
+    *) echo "truthy-fetch: only http/https URLs are accepted" >&2; exit 2 ;;
+esac
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/truthy-fetch.XXXXXX")
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+
+set +e
+curl --silent --show-error --location --max-redirs 8 \
+     --connect-timeout 20 --max-time 120 --fail-with-body \
+     --dump-header "$work/headers" \
+     --output "$work/body" \
+     --write-out '%{http_code}\t%{url_effective}\t%{content_type}\n' \
+     "$url" > "$work/result"
+status=$?
+set -e
+
+[ -f "$work/body" ] || : > "$work/body"
+sha=$(sha256sum "$work/body" | awk '{print $1}')
+dest="$run_dir/artifacts/sha256/$sha"
+mkdir -p "$dest/fetches"
+
+if [ ! -f "$dest/body" ]; then
+    mv "$work/body" "$dest/body"
+fi
+
+utc_file=$(date -u '+%Y%m%dT%H%M%SZ')
+utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+url_sha=$(printf '%s' "$url" | sha256sum | awk '{print $1}')
+obs="$dest/fetches/$utc_file-$(printf '%.12s' "$url_sha")"
+mkdir -p "$obs"
+cp "$work/headers" "$obs/headers.txt"
+printf '%s\n' "$url" > "$obs/url.txt"
+printf '%s\t%s\t' "$utc" "$status" > "$obs/fetch.tsv"
+cat "$work/result" >> "$obs/fetch.tsv"
+
+result=$(tr '\t\r\n' '   ' < "$work/result")
+printf '%s\tfetch\t%s\turl=%s status=%s %s\n' \
+    "$utc" "$sha" "$url" "$status" "$result" >> "$run_dir/trace.tsv"
+printf 'url\t%s\tfetched-as\tartifact\t%s\tstatus=%s\n' \
+    "$url" "$sha" "$status" >> "$run_dir/edges.tsv"
+
+printf '%s\t%s\n' "$sha" "$dest"
+exit "$status"
