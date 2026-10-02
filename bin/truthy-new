@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 2 ]; then
+    echo "usage: truthy-new RUN_DIR QUESTION..." >&2
+    exit 2
+fi
+
+run_dir=$1
+shift
+question=$*
+
+if [ -e "$run_dir" ]; then
+    echo "truthy-new: already exists: $run_dir" >&2
+    exit 1
+fi
+
+umask 022
+mkdir -p "$run_dir/artifacts/sha256" \
+         "$run_dir/model-runs" \
+         "$run_dir/queue/model" \
+         "$run_dir/queue/done" \
+         "$run_dir/issues"
+
+printf '%s\n' "$question" > "$run_dir/question.txt"
+printf 'utc\tkind\tkey\tvalue\n' > "$run_dir/trace.tsv"
+printf 'utc\tprovider\tquery\tresult_url\n' > "$run_dir/searches.tsv"
+printf 'from_kind\tfrom_key\trelation\tto_kind\tto_key\tnote\n' > "$run_dir/edges.tsv"
+printf 'claim_id\tstatus\tclaim\tevidence\tnote\n' > "$run_dir/claims.tsv"
+printf '# Conclusion\n\nNot yet concluded.\n' > "$run_dir/conclusion.md"
+
+utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+printf '%s\tnew\t%s\t%s\n' "$utc" "$run_dir" "$question" >> "$run_dir/trace.tsv"
