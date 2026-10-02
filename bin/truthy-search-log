@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 3 ]; then
+    echo "usage: truthy-search-log RUN_DIR PROVIDER QUERY [RESULT_URL ...]" >&2
+    exit 2
+fi
+
+run_dir=$1
+provider=$2
+query=$3
+shift 3
+
+[ -f "$run_dir/searches.tsv" ] || {
+    echo "truthy-search-log: not a Truthy run: $run_dir" >&2
+    exit 1
+}
+
+clean() {
+    printf '%s' "$1" | tr '\t\r\n' '   '
+}
+
+utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+provider_clean=$(clean "$provider")
+query_clean=$(clean "$query")
+
+if [ "$#" -eq 0 ]; then
+    printf '%s\t%s\t%s\t\n' "$utc" "$provider_clean" "$query_clean" >> "$run_dir/searches.tsv"
+else
+    for url in "$@"; do
+        url_clean=$(clean "$url")
+        printf '%s\t%s\t%s\t%s\n' "$utc" "$provider_clean" "$query_clean" "$url_clean" >> "$run_dir/searches.tsv"
+        printf 'search\t%s:%s\treturned\turl\t%s\t\n' "$provider_clean" "$query_clean" "$url_clean" >> "$run_dir/edges.tsv"
+    done
+fi
+
+printf '%s\tsearch\t%s\t%s\n' "$utc" "$provider_clean" "$query_clean" >> "$run_dir/trace.tsv"
