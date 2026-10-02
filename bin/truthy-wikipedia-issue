@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 4 ]; then
+    echo "usage: truthy-wikipedia-issue RUN_DIR ARTICLE CLAIM SUMMARY" >&2
+    echo "       writes Markdown to RUN_DIR/issues; it does not post to Wikipedia" >&2
+    exit 2
+fi
+
+run_dir=$1
+article=$2
+claim=$3
+summary=$4
+
+[ -f "$run_dir/trace.tsv" ] || {
+    echo "truthy-wikipedia-issue: not a Truthy run: $run_dir" >&2
+    exit 1
+}
+
+utc_file=$(date -u '+%Y%m%dT%H%M%SZ')
+utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+out="$run_dir/issues/wikipedia-$utc_file.md"
+
+cat > "$out" <<EOF2
+# Wikipedia discrepancy: $article
+
+## Article
+
+$article
+
+## Claim under review
+
+$claim
+
+## Current finding
+
+$summary
+
+## Truthy investigation
+
+Run directory: \`$run_dir\`
+
+Before opening this as a repository issue, include the relevant frozen artifact hashes, source locations, contrary evidence, and uncertainty.  This document is intentionally not posted to Wikipedia automatically.
+EOF2
+
+printf '%s\tissue\t%s\tWikipedia discrepancy draft\n' "$utc" "$out" >> "$run_dir/trace.tsv"
+printf '%s\n' "$out"
