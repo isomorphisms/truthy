@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 5 ]; then
+    echo "usage: truthy-claim RUN_DIR CLAIM_ID STATUS CLAIM EVIDENCE [NOTE]" >&2
+    exit 2
+fi
+
+run_dir=$1
+claim_id=$2
+status=$3
+claim=$4
+evidence=$5
+note=${6-}
+
+[ -f "$run_dir/claims.tsv" ] || {
+    echo "truthy-claim: not a Truthy run: $run_dir" >&2
+    exit 1
+}
+
+case "$status" in
+    unreviewed|supported|contradicted|mixed|not-established|out-of-scope) ;;
+    *) echo "truthy-claim: unknown status: $status" >&2; exit 2 ;;
+esac
+
+clean() { printf '%s' "$1" | tr '\t\r\n' '   '; }
+claim_id=$(clean "$claim_id")
+status=$(clean "$status")
+claim=$(clean "$claim")
+evidence=$(clean "$evidence")
+note=$(clean "$note")
+
+printf '%s\t%s\t%s\t%s\t%s\n' "$claim_id" "$status" "$claim" "$evidence" "$note" >> "$run_dir/claims.tsv"
+printf 'evidence\t%s\t%s\tclaim\t%s\t%s\n' "$evidence" "$status" "$claim_id" "$note" >> "$run_dir/edges.tsv"
+utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+printf '%s\tclaim\t%s\t%s: %s\n' "$utc" "$claim_id" "$status" "$claim" >> "$run_dir/trace.tsv"
