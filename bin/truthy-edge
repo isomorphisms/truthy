@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 6 ]; then
+    echo "usage: truthy-edge RUN_DIR FROM_KIND FROM_KEY RELATION TO_KIND TO_KEY [NOTE]" >&2
+    exit 2
+fi
+
+run_dir=$1
+from_kind=$2
+from_key=$3
+relation=$4
+to_kind=$5
+to_key=$6
+note=${7-}
+
+[ -f "$run_dir/edges.tsv" ] || {
+    echo "truthy-edge: not a Truthy run: $run_dir" >&2
+    exit 1
+}
+
+clean() { printf '%s' "$1" | tr '\t\r\n' '   '; }
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(clean "$from_kind")" "$(clean "$from_key")" "$(clean "$relation")" \
+    "$(clean "$to_kind")" "$(clean "$to_key")" "$(clean "$note")" \
+    >> "$run_dir/edges.tsv"
