@@ -1,0 +1,68 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 5 ]; then
+    echo "usage: truthy-model RUN_DIR MODEL_ID MODEL_REVISION -- COMMAND [ARG ...]" >&2
+    exit 2
+fi
+
+run_dir=$1
+model_id=$2
+model_revision=$3
+shift 3
+
+[ "$1" = "--" ] || {
+    echo "truthy-model: expected -- before model command" >&2
+    exit 2
+}
+shift
+[ "$#" -gt 0 ] || {
+    echo "truthy-model: missing model command" >&2
+    exit 2
+}
+
+[ -f "$run_dir/trace.tsv" ] || {
+    echo "truthy-model: not a Truthy run: $run_dir" >&2
+    exit 1
+}
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/truthy-model.XXXXXX")
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+cat > "$work/prompt.txt"
+prompt_sha=$(sha256sum "$work/prompt.txt" | awk '{print $1}')
+utc_file=$(date -u '+%Y%m%dT%H%M%SZ')
+utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+run="$run_dir/model-runs/$utc_file-$(printf '%.12s' "$prompt_sha")"
+mkdir -p "$run"
+
+cp "$work/prompt.txt" "$run/prompt.txt"
+printf '%s\n' "$model_id" > "$run/model-id.txt"
+printf '%s\n' "$model_revision" > "$run/model-revision.txt"
+cmd=$1
+shift
+printf '%s\n' "$cmd" > "$run/command.txt"
+printf '%s\0' "$cmd" "$@" > "$run/argv.nul"
+for arg in "$@"; do
+    printf 'arg\t%s\n' "$(printf '%s' "$arg" | tr '\t\r\n' '   ')" >> "$run/command.txt"
+done
+set -- "$cmd" "$@"
+
+set +e
+"$@" < "$run/prompt.txt" > "$run/stdout.txt" 2> "$run/stderr.txt"
+status=$?
+set -e
+printf '%s\n' "$status" > "$run/exit-status.txt"
+
+stdout_sha=$(sha256sum "$run/stdout.txt" | awk '{print $1}')
+stderr_sha=$(sha256sum "$run/stderr.txt" | awk '{print $1}')
+printf 'prompt\t%s\nstdout\t%s\nstderr\t%s\n' \
+    "$prompt_sha" "$stdout_sha" "$stderr_sha" > "$run/hashes.tsv"
+
+printf '%s\tmodel\t%s\tmodel=%s revision=%s prompt=%s stdout=%s exit=%s\n' \
+    "$utc" "$run" "$model_id" "$model_revision" "$prompt_sha" "$stdout_sha" "$status" \
+    >> "$run_dir/trace.tsv"
+printf 'prompt\t%s\tanalyzed-by\tmodel-run\t%s\tmodel=%s revision=%s\n' \
+    "$prompt_sha" "$run" "$model_id" "$model_revision" >> "$run_dir/edges.tsv"
+
+cat "$run/stdout.txt"
+exit "$status"
